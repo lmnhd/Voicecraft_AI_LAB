@@ -76,7 +76,6 @@ export function VoiceDesigner() {
         use_speaker_boost: useSpeakerBoost,
       };
 
-      // TODO: Replace with actual user ID from auth
       const userId = '00000000-0000-0000-0000-000000000000';
 
       const result = await createVoice(userId, voiceName, voiceDescription, sampleText, settings);
@@ -84,13 +83,12 @@ export function VoiceDesigner() {
       if (!result.success) {
         setError(result.error || 'Failed to save voice');
       } else {
-        // Success! Clear form
         setVoiceName('');
         setVoiceDescription('');
         setSampleText('');
         setAudioBase64(null);
         alert('Voice saved successfully!');
-        window.location.reload(); // Refresh to show new voice in library
+        window.location.reload();
       }
     } catch (err) {
       setError('An unexpected error occurred');
@@ -109,7 +107,6 @@ export function VoiceDesigner() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Voice Name */}
         <div className="space-y-2">
           <Label htmlFor="voice-name">Voice Name</Label>
           <Input
@@ -120,7 +117,6 @@ export function VoiceDesigner() {
           />
         </div>
 
-        {/* Voice Description */}
         <div className="space-y-2">
           <Label htmlFor="voice-description">Voice Description</Label>
           <Textarea
@@ -132,7 +128,6 @@ export function VoiceDesigner() {
           />
         </div>
 
-        {/* Sample Text */}
         <div className="space-y-2">
           <Label htmlFor="sample-text">Sample Text</Label>
           <Textarea
@@ -144,7 +139,6 @@ export function VoiceDesigner() {
           />
         </div>
 
-        {/* Audio Preview */}
         {audioBase64 && (
           <div className="space-y-2">
             <Label>Preview</Label>
@@ -152,11 +146,9 @@ export function VoiceDesigner() {
           </div>
         )}
 
-        {/* Voice Settings */}
         <div className="space-y-4 rounded-lg border p-4">
           <h3 className="font-medium">Voice Settings</h3>
 
-          {/* Stability */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="stability">Stability</Label>
@@ -175,7 +167,6 @@ export function VoiceDesigner() {
             </p>
           </div>
 
-          {/* Similarity Boost */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="similarity">Similarity Boost</Label>
@@ -194,7 +185,6 @@ export function VoiceDesigner() {
             </p>
           </div>
 
-          {/* Style */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="style">Style Exaggeration</Label>
@@ -213,10 +203,26 @@ export function VoiceDesigner() {
             </p>
           </div>
 
-          {/* Speaker Boost */}
           <div className="flex items-center space-x-2">
             <input
-            Action Buttons */}
+              type="checkbox"
+              id="speaker-boost"
+              checked={useSpeakerBoost}
+              onChange={(e) => setUseSpeakerBoost(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <Label htmlFor="speaker-boost" className="cursor-pointer">
+              Use Speaker Boost
+            </Label>
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-lg bg-destructive/15 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
         <div className="flex gap-2">
           <Button
             onClick={handlePreview}
@@ -254,26 +260,7 @@ export function VoiceDesigner() {
               </>
             )}
           </Button>
-        </div
-
-        {/* Preview Button */}
-        <Button
-          onClick={handlePreview}
-          disabled={isLoading || !voiceDescription.trim() || !sampleText.trim()}
-          className="w-full"
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Generating Preview...
-            </>
-          ) : (
-            <>
-              <Play className="mr-2 h-4 w-4" />
-              Preview Voice
-            </>
-          )}
-        </Button>
+        </div>
       </CardContent>
     </Card>
   );

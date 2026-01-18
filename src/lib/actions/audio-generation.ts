@@ -15,9 +15,8 @@ export async function generateVoicePreview(
   try {
     const elevenlabs = getElevenLabsClient();
 
-    // Generate audio using ElevenLabs
-    const audio = await elevenlabs.generate({
-      voice: voiceId,
+    // Generate audio using ElevenLabs textToSpeech.convert
+    const audio = await elevenlabs.textToSpeech.convert(voiceId, {
       text: text,
       model_id: 'eleven_multilingual_v2',
       voice_settings: {
@@ -65,9 +64,9 @@ export async function getAvailableVoices(): Promise<{
 
     return {
       success: true,
-      voices: voices.voices.map((v) => ({
+      voices: voices.voices.map((v: any) => ({
         voice_id: v.voice_id,
-        name: v.name,
+        name: v.name || 'Unnamed Voice',
         description: v.description,
       })),
     };
