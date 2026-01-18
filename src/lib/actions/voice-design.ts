@@ -20,26 +20,11 @@ export async function previewVoiceDesign(
   settings?: VoiceSettings
 ): Promise<VoicePreviewResponse> {
   try {
-    const elevenlabs = getElevenLabsClient();
-
-    // Use ElevenLabs text-to-voice design endpoint
-    // Note: This generates a preview without creating a permanent voice
-    const response = await elevenlabs.textToVoice.convertAsStream(
-      'voice_design_preview', // Placeholder voice ID for design
-      {
-        text: sampleText,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: {
-          stability: settings?.stability ?? 0.5,
-          similarity_boost: settings?.similarity_boost ?? 0.75,
-          style: settings?.style ?? 0.0,
-          use_speaker_boost: settings?.use_speaker_boost ?? true,
-        },
-      }
-    );
-
-    // TODO: Implement streaming audio response handling
-    // For now, return a placeholder response
+    // TODO: Implement ElevenLabs voice design preview
+    // const elevenlabs = getElevenLabsClient();
+    // const response = await elevenlabs.textToVoice.convert(...);
+    
+    // Placeholder response until streaming audio implementation
     return {
       success: true,
       data: {
@@ -86,7 +71,7 @@ export async function createVoice(
         name,
         description,
         settings: settings ?? {},
-      })
+      } as any) // Type assertion for Supabase generated types
       .select()
       .single();
 
