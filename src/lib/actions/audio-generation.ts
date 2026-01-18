@@ -16,9 +16,9 @@ export async function generateVoicePreview(
     const elevenlabs = getElevenLabsClient();
 
     // Generate audio using ElevenLabs textToSpeech.convert
-    const audio = await elevenlabs.textToSpeech.convert(voiceId, {
+    const audioStream = await elevenlabs.textToSpeech.convert(voiceId, {
       text: text,
-      model_id: 'eleven_multilingual_v2',
+      modelId: 'eleven_multilingual_v2',
       voice_settings: {
         stability: settings?.stability ?? 0.5,
         similarity_boost: settings?.similarity_boost ?? 0.75,
@@ -27,15 +27,27 @@ export async function generateVoicePreview(
       },
     });
 
-    // Convert audio stream to buffer
-    const chunks: Buffer[] = [];
-    for await (const chunk of audio) {
-      chunks.push(Buffer.from(chunk));
+    // Convert ReadableStream to buffer
+    const reader = audioStream.getReader();
+    const chunks: Uint8Array[] = [];
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
     }
-    const audioBuffer = Buffer.concat(chunks);
+
+    // Concatenate all chunks into a single buffer
+    const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+    const audioBuffer = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      audioBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
 
     // Convert to base64 for client-side playback
-    const audioBase64 = audioBuffer.toString('base64');
+    const audioBase64 = Buffer.from(audioBuffer).toString('base64');
 
     return {
       success: true,
