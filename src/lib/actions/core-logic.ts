@@ -8,7 +8,7 @@
  * - Maintainability: Single source of truth for business rules
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient} from '@supabase/supabase-js';
 import type { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import type { Voice, VoiceInsert, VoiceSettings } from '@/types';
 
