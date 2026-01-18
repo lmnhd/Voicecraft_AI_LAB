@@ -26,7 +26,7 @@ export function VoiceDesigner() {
   // Form state
   const [voiceDescription, setVoiceDescription] = useState('');
   const [sampleText, setSampleText] = useState(
-    'Welcome to VoiceCraft AI Lab. I am your custom designed voice, created using advanced AI technology.'
+    'I designed this voice specifically for this moment to demonstrate the real-time flexibility of the ElevenLabs TTV pipeline I\'ve architected here.'
   );
   const [voiceName, setVoiceName] = useState('');
   
