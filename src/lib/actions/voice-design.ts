@@ -8,6 +8,7 @@ import {
   createVoiceRecord,
   fetchUserVoices,
   deleteVoiceRecord,
+  generateAudio,
   type VoiceDesignPreview,
 } from './core-logic';
 import type {
@@ -224,6 +225,68 @@ export async function deleteVoice(voiceId: string): Promise<ActionResponse> {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to delete voice',
+    };
+  }
+}
+
+// ============================================================================
+// Text-to-Speech Generation
+// ============================================================================
+
+export interface GenerateSpeechResponse {
+  success: boolean;
+  data?: {
+    /** Base64-encoded audio data */
+    audioBase64: string;
+  };
+  error?: string;
+}
+
+/**
+ * Generate speech from a saved voice
+ * Uses the ElevenLabs voice_id stored in the database to generate new audio
+ * 
+ * @param elevenLabsVoiceId - The ElevenLabs voice ID (from voice.voice_id)
+ * @param text - Text to convert to speech
+ * @returns Base64 audio data for playback
+ */
+export async function generateSpeechFromVoice(
+  elevenLabsVoiceId: string,
+  text: string
+): Promise<GenerateSpeechResponse> {
+  try {
+    if (!elevenLabsVoiceId) {
+      return {
+        success: false,
+        error: 'Voice ID is required',
+      };
+    }
+
+    if (!text.trim()) {
+      return {
+        success: false,
+        error: 'Text is required',
+      };
+    }
+
+    const elevenlabs = getElevenLabsClient();
+    
+    const result = await generateAudio(elevenlabs, {
+      voiceId: elevenLabsVoiceId,
+      text,
+    });
+
+    return {
+      success: true,
+      data: {
+        audioBase64: result.audioBase64,
+      },
+    };
+  } catch (error) {
+    console.error('Generate speech error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate speech',
     };
   }
 }

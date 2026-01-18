@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Trash2 } from 'lucide-react';
-import { getUserVoices, deleteVoice } from '@/lib/actions/voice-design';
+import { Input } from '@/components/ui/input';
+import { Loader2, Trash2, Play, Square, Volume2 } from 'lucide-react';
+import { getUserVoices, deleteVoice, generateSpeechFromVoice } from '@/lib/actions/voice-design';
 import type { Voice } from '@/types';
 
 export function VoiceLibrary() {
@@ -12,12 +13,23 @@ export function VoiceLibrary() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [speakText, setSpeakText] = useState<Record<string, string>>({});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // TODO: Replace with actual user ID from auth
   const userId = '00000000-0000-0000-0000-000000000000';
 
   useEffect(() => {
     loadVoices();
+    return () => {
+      // Cleanup audio on unmount
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
   }, []);
 
   const loadVoices = async () => {
@@ -62,6 +74,64 @@ export function VoiceLibrary() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const handlePlay = async (voice: Voice) => {
+    const text = speakText[voice.id]?.trim() || 'Hello! This is a test of my custom voice.';
+    
+    // Stop current audio if playing
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    // If already playing this voice, just stop
+    if (playingId === voice.id) {
+      setPlayingId(null);
+      return;
+    }
+
+    setGeneratingId(voice.id);
+
+    try {
+      const result = await generateSpeechFromVoice(voice.voice_id, text);
+
+      if (!result.success || !result.data) {
+        alert(result.error || 'Failed to generate speech');
+        return;
+      }
+
+      // Create and play audio
+      const audio = new Audio(`data:audio/mpeg;base64,${result.data.audioBase64}`);
+      audioRef.current = audio;
+      
+      audio.onended = () => {
+        setPlayingId(null);
+        audioRef.current = null;
+      };
+
+      audio.onerror = () => {
+        setPlayingId(null);
+        audioRef.current = null;
+        alert('Failed to play audio');
+      };
+
+      await audio.play();
+      setPlayingId(voice.id);
+    } catch (err) {
+      console.error('Play error:', err);
+      alert('An unexpected error occurred');
+    } finally {
+      setGeneratingId(null);
+    }
+  };
+
+  const handleStop = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setPlayingId(null);
   };
 
   if (isLoading) {
@@ -115,35 +185,75 @@ export function VoiceLibrary() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {voices.map((voice) => (
               <div
                 key={voice.id}
-                className="flex items-center justify-between rounded-lg border p-4"
+                className="rounded-lg border p-4 space-y-3"
               >
-                <div className="flex-1">
-                  <h3 className="font-medium">{voice.name}</h3>
-                  {voice.description && (
-                    <p className="text-sm text-muted-foreground">
-                      {voice.description}
+                {/* Voice Info Row */}
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="h-4 w-4 text-primary" />
+                      <h3 className="font-medium">{voice.name}</h3>
+                    </div>
+                    {voice.description && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {voice.description}
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Created {new Date(voice.created_at).toLocaleDateString()}
                     </p>
-                  )}
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Created {new Date(voice.created_at).toLocaleDateString()}
-                  </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDelete(voice.id)}
+                    disabled={deletingId === voice.id}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    {deletingId === voice.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDelete(voice.id)}
-                  disabled={deletingId === voice.id}
-                >
-                  {deletingId === voice.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+
+                {/* Play Controls Row */}
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter text to speak..."
+                    value={speakText[voice.id] || ''}
+                    onChange={(e) => setSpeakText({ ...speakText, [voice.id]: e.target.value })}
+                    className="flex-1 text-sm"
+                    disabled={generatingId === voice.id}
+                  />
+                  {playingId === voice.id ? (
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      onClick={handleStop}
+                    >
+                      <Square className="h-4 w-4" />
+                    </Button>
                   ) : (
-                    <Trash2 className="h-4 w-4" />
+                    <Button
+                      variant="default"
+                      size="icon"
+                      onClick={() => handlePlay(voice)}
+                      disabled={generatingId === voice.id}
+                    >
+                      {generatingId === voice.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                    </Button>
                   )}
-                </Button>
+                </div>
               </div>
             ))}
           </div>
