@@ -9,18 +9,121 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import type { Voice, VoiceInsert, VoiceSettings } from '@/types';
 
-// Use dynamic type to avoid compile-time dependency on ElevenLabs client types
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ElevenLabsClient = any;
-
 // ============================================================================
-// ElevenLabs Voice Generation Core Logic
+// ElevenLabs Voice Design API - Text-to-Voice (TTV)
 // ============================================================================
 
 /**
- * Voice generation configuration
+ * Voice design preview configuration
+ */
+export interface VoiceDesignConfig {
+  voiceDescription: string;
+  text: string;
+  outputFormat?: 'mp3_22050_32' | 'mp3_44100_64' | 'mp3_44100_96' | 'mp3_44100_128' | 'mp3_44100_192';
+}
+
+/**
+ * Voice design preview result from ElevenLabs
+ */
+export interface VoiceDesignPreview {
+  /** The generated voice ID - use this to create a permanent voice */
+  generatedVoiceId: string;
+  /** Base64 encoded audio preview */
+  audioBase64: string;
+  /** Media type (e.g., audio/mpeg) */
+  mediaType: string;
+  /** Duration of the preview in seconds */
+  durationSecs: number;
+}
+
+/**
+ * Result from voice design operation
+ */
+export interface VoiceDesignResult {
+  /** Multiple voice previews to choose from */
+  previews: VoiceDesignPreview[];
+  /** The text used to generate previews */
+  text: string;
+}
+
+/**
+ * Creates voice design previews using ElevenLabs Text-to-Voice API
+ * This is the REAL API call - not a mock!
+ * 
+ * @param elevenlabs - ElevenLabs client instance
+ * @param config - Voice design configuration
+ * @returns Multiple voice previews to choose from
+ * @throws Error if design fails
+ */
+export async function createVoiceDesignPreviews(
+  elevenlabs: ElevenLabsClient,
+  config: VoiceDesignConfig
+): Promise<VoiceDesignResult> {
+  const { voiceDescription, text, outputFormat = 'mp3_44100_128' } = config;
+
+  // Call the real ElevenLabs Text-to-Voice design API
+  const response = await elevenlabs.textToVoice.createPreviews({
+    voiceDescription,
+    text,
+    outputFormat,
+  });
+
+  // Map the SDK response to our typed interface
+  const previews: VoiceDesignPreview[] = response.previews.map((preview) => ({
+    generatedVoiceId: preview.generatedVoiceId,
+    audioBase64: preview.audioBase64,
+    mediaType: preview.mediaType,
+    durationSecs: preview.durationSecs,
+  }));
+
+  return {
+    previews,
+    text: response.text,
+  };
+}
+
+/**
+ * Creates a permanent voice from a design preview
+ * 
+ * @param elevenlabs - ElevenLabs client instance
+ * @param params - Voice creation parameters
+ * @returns The created voice ID
+ * @throws Error if creation fails
+ */
+export async function createVoiceFromPreview(
+  elevenlabs: ElevenLabsClient,
+  params: {
+    generatedVoiceId: string;
+    voiceName: string;
+    voiceDescription: string;
+    labels?: Record<string, string>;
+  }
+): Promise<{ voiceId: string; name: string }> {
+  const { generatedVoiceId, voiceName, voiceDescription, labels } = params;
+
+  // Call the real ElevenLabs API to create a permanent voice
+  const voice = await elevenlabs.textToVoice.create({
+    generatedVoiceId,
+    voiceName,
+    voiceDescription,
+    labels,
+  });
+
+  return {
+    voiceId: voice.voiceId,
+    name: voice.name ?? voiceName,
+  };
+}
+
+// ============================================================================
+// ElevenLabs Text-to-Speech API (for existing voices)
+// ============================================================================
+
+/**
+ * Voice generation configuration for TTS
  */
 interface VoiceGenerationConfig {
   text: string;
@@ -93,7 +196,45 @@ export async function generateAudio(
 }
 
 /**
- * ElevenLabs voice response type (from SDK)
+ * Creates a streaming audio generator for real-time playback
+ * Use this for true streaming audio in the UI
+ * 
+ * @param elevenlabs - ElevenLabs client instance
+ * @param config - Voice generation configuration
+ * @returns AsyncGenerator yielding audio chunks
+ */
+export async function* streamAudio(
+  elevenlabs: ElevenLabsClient,
+  config: VoiceGenerationConfig
+): AsyncGenerator<Uint8Array, void, unknown> {
+  const { text, voiceId, modelId = 'eleven_multilingual_v2', settings } = config;
+
+  const audioStream = await elevenlabs.textToSpeech.convert(voiceId, {
+    text,
+    modelId,
+    voiceSettings: {
+      stability: settings?.stability ?? 0.5,
+      similarityBoost: settings?.similarity_boost ?? 0.75,
+      style: settings?.style ?? 0.0,
+      useSpeakerBoost: settings?.use_speaker_boost ?? true,
+    },
+  });
+
+  const reader = audioStream.getReader();
+  
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) yield value;
+  }
+}
+
+// ============================================================================
+// ElevenLabs Voice Library
+// ============================================================================
+
+/**
+ * ElevenLabs voice from SDK
  */
 interface ElevenLabsVoice {
   voice_id: string;
@@ -124,8 +265,9 @@ export async function fetchAvailableVoices(
 ): Promise<NormalizedVoice[]> {
   const response = await elevenlabs.voices.getAll();
   
-  return response.voices.map((v: ElevenLabsVoice) => ({
-    voice_id: v.voice_id,
+  // The SDK returns voices with voiceId (camelCase), we normalize to voice_id (snake_case)
+  return response.voices.map((v: { voiceId: string; name?: string; description?: string }) => ({
+    voice_id: v.voiceId,
     name: v.name || 'Unnamed Voice',
     description: v.description,
   }));

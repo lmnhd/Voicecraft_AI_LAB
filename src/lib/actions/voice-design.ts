@@ -3,92 +3,135 @@
 import { getElevenLabsClient } from '@/lib/elevenlabs/client';
 import { createSupabaseServerClient } from '@/lib/supabase/client';
 import {
-  generateAudio,
+  createVoiceDesignPreviews,
+  createVoiceFromPreview,
   createVoiceRecord,
   fetchUserVoices,
   deleteVoiceRecord,
+  type VoiceDesignPreview,
 } from './core-logic';
 import type {
-  VoicePreviewResponse,
   VoiceCreateResponse,
   VoiceListResponse,
   VoiceSettings,
 } from '@/types';
 
+// ============================================================================
+// Voice Design Preview Response Types
+// ============================================================================
+
+export interface VoiceDesignPreviewsResponse {
+  success: boolean;
+  data?: {
+    /** Multiple generated voice previews to choose from */
+    previews: VoiceDesignPreview[];
+    /** The text used for generation */
+    text: string;
+  };
+  error?: string;
+}
+
+// ============================================================================
+// Voice Design Server Actions (REAL API - NO MOCKS!)
+// ============================================================================
+
 /**
- * Preview a voice design using ElevenLabs Text-to-Voice API
- * Generates audio based on description and sample text with streaming support
+ * Create voice design previews using ElevenLabs Text-to-Voice API
+ * This generates multiple unique voice previews based on a text description
  * 
- * This is a Next.js Server Action wrapper around core business logic.
+ * REAL IMPLEMENTATION - Uses elevenlabs.textToVoice.createPreviews()
+ * 
+ * @param voiceDescription - Natural language description of the voice
+ * @param sampleText - Text to speak in the preview (100-1000 chars recommended)
+ * @returns Multiple voice previews with audio and generated voice IDs
  */
 export async function previewVoiceDesign(
   voiceDescription: string,
-  sampleText: string,
-  settings?: VoiceSettings
-): Promise<VoicePreviewResponse> {
+  sampleText: string
+): Promise<VoiceDesignPreviewsResponse> {
   try {
+    if (!voiceDescription.trim()) {
+      return {
+        success: false,
+        error: 'Voice description is required',
+      };
+    }
+
+    if (!sampleText.trim() || sampleText.length < 50) {
+      return {
+        success: false,
+        error: 'Sample text must be at least 50 characters',
+      };
+    }
+
     const elevenlabs = getElevenLabsClient();
     
-    // For preview, use a default voice ID (Bella - high quality female voice)
-    // In a full implementation, you could use ElevenLabs Voice Design API
-    // to create a temporary voice based on the description
-    const defaultVoiceId = 'EXAVITQu4vr4xnSDxMaL';
-    
-    // Generate audio using core business logic
-    const result = await generateAudio(elevenlabs, {
+    // Call the REAL ElevenLabs Text-to-Voice Design API
+    const result = await createVoiceDesignPreviews(elevenlabs, {
+      voiceDescription,
       text: sampleText,
-      voiceId: defaultVoiceId,
-      settings,
+      outputFormat: 'mp3_44100_128', // High quality preview
     });
-    
-    // Return audio as data URL for immediate playback
-    const audioUrl = `data:audio/mpeg;base64,${result.audioBase64}`;
     
     return {
       success: true,
       data: {
-        audioUrl,
-        voiceId: defaultVoiceId,
+        previews: result.previews,
+        text: result.text,
       },
     };
   } catch (error) {
-    console.error('Voice preview error:', error);
+    console.error('Voice design preview error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to preview voice',
+      error: error instanceof Error ? error.message : 'Failed to generate voice previews',
     };
   }
 }
 
 /**
- * Create a permanent voice using ElevenLabs Voice Design API
- * Saves the voice configuration to Supabase with RLS enforcement
+ * Create a permanent voice from a design preview
+ * This saves the voice to ElevenLabs and then to Supabase
  * 
- * This is a Next.js Server Action wrapper around core business logic.
+ * REAL IMPLEMENTATION - Uses elevenlabs.textToVoice.create()
+ * 
+ * @param userId - User ID for RLS
+ * @param generatedVoiceId - The generated_voice_id from a preview
+ * @param voiceName - Name for the new voice
+ * @param voiceDescription - Description for the voice
+ * @param settings - Optional voice settings to save
  */
-export async function createVoice(
+export async function createVoiceFromDesign(
   userId: string,
-  name: string,
-  description: string,
-  sampleText: string,
+  generatedVoiceId: string,
+  voiceName: string,
+  voiceDescription: string,
   settings?: VoiceSettings
 ): Promise<VoiceCreateResponse> {
   try {
-    // TODO: Implement ElevenLabs voice creation via Voice Design API
-    // const elevenlabs = getElevenLabsClient();
-    // const voice = await elevenlabs.voices.create({...});
+    if (!generatedVoiceId) {
+      return {
+        success: false,
+        error: 'Generated voice ID is required. Generate a preview first.',
+      };
+    }
 
-    // Placeholder voice_id until ElevenLabs Voice Design API integration is complete
-    const voiceId = `voice_${Date.now()}`;
+    const elevenlabs = getElevenLabsClient();
+    
+    // Step 1: Create the permanent voice in ElevenLabs from the preview
+    const { voiceId } = await createVoiceFromPreview(elevenlabs, {
+      generatedVoiceId,
+      voiceName,
+      voiceDescription,
+    });
 
+    // Step 2: Save to Supabase with RLS
     const supabase = createSupabaseServerClient();
-
-    // Delegate to core business logic - no 'any' types needed!
     const voice = await createVoiceRecord(supabase, {
       userId,
-      voiceId,
-      name,
-      description,
+      voiceId, // Real ElevenLabs voice_id
+      name: voiceName,
+      description: voiceDescription,
       settings,
     });
 
@@ -106,16 +149,49 @@ export async function createVoice(
 }
 
 /**
+ * Legacy createVoice function - now wraps createVoiceFromDesign
+ * Kept for backward compatibility with existing UI
+ * 
+ * NOTE: This requires a generatedVoiceId from previewVoiceDesign()
+ */
+export async function createVoice(
+  userId: string,
+  name: string,
+  description: string,
+  sampleText: string,
+  settings?: VoiceSettings,
+  generatedVoiceId?: string
+): Promise<VoiceCreateResponse> {
+  // If no generatedVoiceId provided, we need to generate a preview first
+  if (!generatedVoiceId) {
+    // Generate a preview to get a generatedVoiceId
+    const previewResult = await previewVoiceDesign(description, sampleText);
+    
+    if (!previewResult.success || !previewResult.data?.previews[0]) {
+      return {
+        success: false,
+        error: previewResult.error || 'Failed to generate voice preview',
+      };
+    }
+    
+    // Use the first preview's generatedVoiceId
+    generatedVoiceId = previewResult.data.previews[0].generatedVoiceId;
+  }
+
+  return createVoiceFromDesign(userId, generatedVoiceId, name, description, settings);
+}
+
+// ============================================================================
+// Voice Library Server Actions
+// ============================================================================
+
+/**
  * Get all voices for the authenticated user
  * RLS automatically filters by user_id
- * 
- * This is a Next.js Server Action wrapper around core business logic.
  */
 export async function getUserVoices(userId: string): Promise<VoiceListResponse> {
   try {
     const supabase = createSupabaseServerClient();
-
-    // Delegate to core business logic
     const voices = await fetchUserVoices(supabase, userId);
 
     return {
@@ -134,14 +210,10 @@ export async function getUserVoices(userId: string): Promise<VoiceListResponse> 
 /**
  * Delete a voice by ID
  * RLS ensures users can only delete their own voices
- * 
- * This is a Next.js Server Action wrapper around core business logic.
  */
 export async function deleteVoice(voiceId: string): Promise<ActionResponse> {
   try {
     const supabase = createSupabaseServerClient();
-
-    // Delegate to core business logic
     await deleteVoiceRecord(supabase, voiceId);
 
     return {
