@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "VoiceCraft AI Lab",
-  description: "Design custom AI voices with ElevenLabs Text-to-Voice technology",
+  description: "Design custom AI voices with ElevenLabs Text-to-Voice technology (Hosted on Supabase!)",
 };
 
 export default function RootLayout({

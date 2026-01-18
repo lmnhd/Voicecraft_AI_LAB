@@ -15,7 +15,7 @@ export default function HomePage() {
             VoiceCraft AI Lab
           </h1>
           <p className="mt-4 text-lg text-muted-foreground">
-            Design custom AI voices with ElevenLabs Text-to-Voice technology
+            Design custom AI voices with ElevenLabs Text-to-Voice technology (Hosted on Supabase!)
           </p>
         </header>
 
